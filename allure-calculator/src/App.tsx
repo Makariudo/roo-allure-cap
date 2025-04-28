@@ -1,6 +1,6 @@
-import React, { useState, useMemo, ChangeEvent, JSX } from 'react';
+import React, { useState, useMemo, ChangeEvent, JSX, useEffect } from 'react';
 import './App.css';
-import { dataDistance, NameToDistance } from './lib/distance_models'; // Import distance data and type
+import { dataDistance, NameToDistance, DistanceIntermediairesEnum } from './lib/distance_models'; // Import distance data and type
 
 // Type definitions
 interface DistanceData {
@@ -52,15 +52,74 @@ function calculateTime(distanceMeters: number, paceSecondsPerKm: number): number
 
 // Component
 function App(): JSX.Element {
-  // State for pace configuration
-  const [maxPaceMin, setMaxPaceMin] = useState<number>(7); // Default Max: 7:00/km
-  const [maxPaceSec, setMaxPaceSec] = useState<number>(0);
-  const [minPaceMin, setMinPaceMin] = useState<number>(3); // Default Min: 3:00/km
-  const [minPaceSec, setMinPaceSec] = useState<number>(0);
-  const [paceIntervalSec, setPaceIntervalSec] = useState<number>(15); // Default Interval: 15s
+  // State for pace configuration - Initialize from localStorage or defaults
+  const [maxPaceMin, setMaxPaceMin] = useState<number>(() => {
+    const saved = localStorage.getItem('paceConfigMaxMin');
+    return saved ? parseInt(saved, 10) : 7; // Default Max: 7:00/km
+  });
+  const [maxPaceSec, setMaxPaceSec] = useState<number>(() => {
+    const saved = localStorage.getItem('paceConfigMaxSec');
+    return saved ? parseInt(saved, 10) : 0;
+  });
+  const [minPaceMin, setMinPaceMin] = useState<number>(() => {
+    const saved = localStorage.getItem('paceConfigMinMin');
+    return saved ? parseInt(saved, 10) : 3; // Default Min: 3:00/km
+  });
+  const [minPaceSec, setMinPaceSec] = useState<number>(() => {
+    const saved = localStorage.getItem('paceConfigMinSec');
+    return saved ? parseInt(saved, 10) : 0;
+  });
+  const [paceIntervalSec, setPaceIntervalSec] = useState<number>(() => {
+    const saved = localStorage.getItem('paceConfigInterval');
+    return saved ? parseInt(saved, 10) : 15; // Default Interval: 15s
+  });
 
-  // VMA state - kept but unused for now as requested
-  const [vma, setVma] = useState<string>('');
+  // VMA state - Initialize from localStorage or default to '15'
+  const [vma, setVma] = useState<string>(() => {
+    const savedVma = localStorage.getItem('userVma');
+    return savedVma ? savedVma : '15';
+  });
+  const [isColorModeEnabled, setIsColorModeEnabled] = useState<boolean>(false);
+  const [isDarkMode, setIsDarkMode] = useState<boolean>(() => {
+    const savedTheme = localStorage.getItem('theme');
+    return savedTheme === 'dark' || false;
+  });
+
+  useEffect(() => {
+    localStorage.setItem('theme', isDarkMode ? 'dark' : 'light');
+    if (isDarkMode) {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+  }, [isDarkMode]);
+
+
+  // Effect to save VMA to localStorage whenever it changes
+  useEffect(() => {
+    localStorage.setItem('userVma', vma);
+  }, [vma]);
+
+  // Effects to save pace config to localStorage
+  useEffect(() => {
+    localStorage.setItem('paceConfigMaxMin', String(maxPaceMin));
+  }, [maxPaceMin]);
+
+  useEffect(() => {
+    localStorage.setItem('paceConfigMaxSec', String(maxPaceSec));
+  }, [maxPaceSec]);
+
+  useEffect(() => {
+    localStorage.setItem('paceConfigMinMin', String(minPaceMin));
+  }, [minPaceMin]);
+
+  useEffect(() => {
+    localStorage.setItem('paceConfigMinSec', String(minPaceSec));
+  }, [minPaceSec]);
+
+  useEffect(() => {
+    localStorage.setItem('paceConfigInterval', String(paceIntervalSec));
+  }, [paceIntervalSec]);
 
   // Use distances from the imported model
   const distances: DistanceData[] = useMemo(() => {
@@ -141,11 +200,62 @@ function App(): JSX.Element {
     setVma(e.target.value);
   };
 
+  const toggleDarkMode = () => {
+    setIsDarkMode(!isDarkMode);
+  };
+
+  // Function to calculate the background color based on pace and VMA
+  const getPaceColor = (paceSeconds: number, distance: NameToDistance, currentVMA: number): string => {
+    const vmaPaceSeconds = 3600 / currentVMA; // seconds per km at 100% VMA
+    const minPacePercentage = distance.minSoutien / 100;
+    const maxPacePercentage = distance.maxSoutien / 100;
+
+    const minPaceSeconds = vmaPaceSeconds / maxPacePercentage;
+    const maxPaceSeconds = vmaPaceSeconds / minPacePercentage;
+
+    if (paceSeconds < minPaceSeconds || paceSeconds > maxPaceSeconds) {
+      return ''; // No color if outside the range
+    }
+
+    const normalizedPace = (paceSeconds - minPaceSeconds) / (maxPaceSeconds - minPaceSeconds);
+    const red = Math.round(normalizedPace * 255);
+    const green = 255 - red;
+    return `rgb(${red}, ${green}, 0)`;
+  };
+  const toggleColorMode = () => {
+    setIsColorModeEnabled(!isColorModeEnabled);
+  };
+
+  const printTable = () => {
+    const style = document.createElement('style');
+    style.innerHTML = `
+      @media print {
+        body * {
+          visibility: hidden;
+        }
+        .table-container, .table-container * {
+          visibility: visible;
+        }
+        .table-container {
+          position: absolute;
+          left: 0;
+          top: 0;
+        }
+      }
+    `;
+    document.head.appendChild(style);
+    window.print();
+    document.head.removeChild(style);
+  };
 
   return (
-    <div className="App">
-      <h1>Calculateur d'Allure</h1>
-
+    <div className={`App ${isDarkMode ? 'dark' : ''}`}>
+      <div className="flex justify-between items-center mb-4">
+        <h1>Calculateur d'Allure</h1>
+        <button className="bg-gray-100 text-black border border-gray-300 rounded px-2 py-1" onClick={toggleDarkMode}>
+          {isDarkMode ? 'Light Mode' : 'Dark Mode'}
+        </button>
+      </div>
        {/* VMA Input - Kept but doesn't affect table */}
        <div className="vma-input">
         <label htmlFor="vma">Votre VMA (km/h): </label>
@@ -155,9 +265,16 @@ function App(): JSX.Element {
           value={vma}
           onChange={handleVmaChange}
           placeholder="ex: 15"
+          className="bg-gray-100 text-black border border-gray-300 rounded px-2 py-1"
         />
          {vma && parseFloat(vma) > 0 && <span> (Allure VMA: {formatTime(3600 / parseFloat(vma))}/km)</span>}
       </div>
+      <button className="bg-gray-100 text-black border border-gray-300 rounded px-2 py-1 mr-2" onClick={toggleColorMode}>
+        {isColorModeEnabled ? 'Disable Color Mode' : 'Enable Color Mode'}
+      </button>
+      <button className="bg-gray-100 text-black border border-gray-300 rounded px-2 py-1" onClick={printTable}>
+        Print Table
+      </button>
 
        {/* Pace Configuration */}
       <div className="pace-config">
@@ -165,11 +282,19 @@ function App(): JSX.Element {
         <div className="config-row">
            <label>Allure Max (lente):</label>
            <div> {/* Wrap selects for better control */}
-            <select value={maxPaceMin} onChange={handleMaxPaceMinChange}>
+            <select
+              value={maxPaceMin}
+              onChange={handleMaxPaceMinChange}
+              className="bg-gray-100 text-black border border-gray-300 rounded px-2 py-1"
+            >
               {minuteOptions.map(min => <option key={`max-min-${min}`} value={min}>{min}</option>)}
             </select>
             <span>:</span>
-            <select value={maxPaceSec} onChange={handleMaxPaceSecChange}>
+            <select
+              value={maxPaceSec}
+              onChange={handleMaxPaceSecChange}
+              className="bg-gray-100 text-black border border-gray-300 rounded px-2 py-1"
+            >
               {secondOptions.map(sec => <option key={`max-sec-${sec}`} value={sec}>{String(sec).padStart(2, '0')}</option>)}
             </select>
             <span> min/km (max 9:00)</span>
@@ -178,20 +303,33 @@ function App(): JSX.Element {
          <div className="config-row">
            <label>Allure Min (rapide):</label>
            <div>
-            <select value={minPaceMin} onChange={handleMinPaceMinChange}>
+            <select
+              value={minPaceMin}
+              onChange={handleMinPaceMinChange}
+              className="bg-gray-100 text-black border border-gray-300 rounded px-2 py-1"
+            >
               {minuteOptions.map(min => <option key={`min-min-${min}`} value={min}>{min}</option>)}
             </select>
             <span>:</span>
-            <select value={minPaceSec} onChange={handleMinPaceSecChange}>
+            <select
+              value={minPaceSec}
+              onChange={handleMinPaceSecChange}
+              className="bg-gray-100 text-black border border-gray-300 rounded px-2 py-1"
+            >
               {secondOptions.map(sec => <option key={`min-sec-${sec}`} value={sec}>{String(sec).padStart(2, '0')}</option>)}
             </select>
              <span> min/km (min 2:00)</span>
-            </div>
+           </div>
         </div>
          <div className="config-row">
             <label htmlFor="interval">Intervalle (secondes):</label>
             <div>
-                <select id="interval" value={paceIntervalSec} onChange={handleIntervalChange}>
+                <select
+                  id="interval"
+                  value={paceIntervalSec}
+                  onChange={handleIntervalChange}
+                  className="bg-gray-100 text-black border border-gray-300 rounded px-2 py-1"
+                >
                     {intervalOptions.map(sec => <option key={`interval-${sec}`} value={sec}>{sec}s</option>)}
                 </select>
             </div>
@@ -212,16 +350,22 @@ function App(): JSX.Element {
                 </tr>
             </thead>
             <tbody>
-                {paces.map(pace => (
-                <tr key={pace.seconds}>
-                    <td>{pace.label}</td>
-                    {distances.map(dist => (
-                    <td key={`${pace.seconds}-${dist.meters}`}>
-                        {formatTime(calculateTime(dist.meters, pace.seconds))}
-                    </td>
-                    ))}
-                </tr>
-                ))}
+                {paces.map(pace => {
+                  const currentVMA = parseFloat(vma) || 15;
+                  return (
+                    <tr key={pace.seconds}>
+                      <td>{pace.label}</td>
+                      {distances.map(dist => {
+                        const paceColor = isColorModeEnabled ? getPaceColor(pace.seconds, dataDistance[dist.label as DistanceIntermediairesEnum], currentVMA) : '';
+                        return (
+                          <td key={`${pace.seconds}-${dist.meters}`} style={{ backgroundColor: paceColor }}>
+                            {formatTime(calculateTime(dist.meters, pace.seconds))}
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  );
+                })}
             </tbody>
             </table>
         </div>
